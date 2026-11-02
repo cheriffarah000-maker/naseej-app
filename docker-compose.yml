@@ -1,98 +1,178 @@
-version: '3.8'
+# Naseej — full local stack
+#   docker compose up --build
+#
+# One database per service (no shared tables), plus Redis for live positions.
+# The browser only ever talks to the gateway (8080).
+
+name: naseej
 
 services:
-  # --- Shared Infrastructure ---
-  redis:
-    image: redis:alpine
-    container_name: naseej-cache
-    ports:
-      - "6379:6379"
-    restart: unless-stopped
-
-  # --- Auth Service Database ---
+  # ---------------------------------------------------------------- databases
   auth-db:
-    image: postgres:15-alpine
-    container_name: auth-db
+    image: postgres:16-alpine
     environment:
       POSTGRES_USER: naseej_user
       POSTGRES_PASSWORD: naseej_password
       POSTGRES_DB: auth_db
-    ports:
-      - "5433:5432"
+    volumes:
+      - auth-db-data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U naseej_user -d auth_db"]
+      test: ['CMD-SHELL', 'pg_isready -U naseej_user -d auth_db']
       interval: 5s
       timeout: 5s
-      retries: 5
-    restart: unless-stopped
-
-  # --- Auth Service ---
-  auth-service:
-    build: ./backend/auth-service
-    container_name: auth-service
+      retries: 10
     ports:
-      - "3001:3000"
-    environment:
-      DATABASE_URL: postgres://naseej_user:naseej_password@auth-db:5432/auth_db
-      JWT_SECRET: super_secret_tunisia_key
-      PORT: 3000
-    depends_on:
-      auth-db:
-        condition: service_healthy
-    restart: unless-stopped
+      - '5432:5432'
 
-  # --- Emergency Service Database (PostGIS) ---
   emergency-db:
-    image: postgis/postgis:15-3.3-alpine
-    container_name: emergency-db
+    # PostGIS gives us real distance maths for "nearest provider".
+    image: postgis/postgis:16-3.4-alpine
     environment:
       POSTGRES_USER: emergency_user
       POSTGRES_PASSWORD: emergency_password
       POSTGRES_DB: emergency_db
-    ports:
-      - "5434:5432"
+    volumes:
+      - emergency-db-data:/var/lib/postgresql/data
+      - ./infrastructure/postgres/init-postgis.sql:/docker-entrypoint-initdb.d/01-postgis.sql:ro
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U emergency_user -d emergency_db"]
+      test: ['CMD-SHELL', 'pg_isready -U emergency_user -d emergency_db']
       interval: 5s
       timeout: 5s
-      retries: 5
-    restart: unless-stopped
+      retries: 10
+    ports:
+      - '5433:5432'
 
-  # --- Emergency Service ---
+  transport-db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: transport_user
+      POSTGRES_PASSWORD: transport_password
+      POSTGRES_DB: transport_db
+    volumes:
+      - transport-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U transport_user -d transport_db']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    ports:
+      - '5434:5432'
+
+  redis:
+    image: redis:7-alpine
+    command: ['redis-server', '--appendonly', 'no']
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    ports:
+      - '6379:6379'
+
+  # ----------------------------------------------------------------- services
+  auth-service:
+    build: ./backend/auth-service
+    environment:
+      PORT: 3000
+      DATABASE_URL: postgres://naseej_user:naseej_password@auth-db:5432/auth_db
+      JWT_SECRET: ${JWT_SECRET:-dev-only-secret-change-me}
+      JWT_ACCESS_TTL: 1h
+      JWT_REFRESH_TTL: 7d
+      DB_SYNC: 'true'
+    depends_on:
+      auth-db:
+        condition: service_healthy
+    ports:
+      - '3001:3000'
+    healthcheck:
+      test: ['CMD-SHELL', 'wget -qO- http://127.0.0.1:3000/health || exit 1']
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
   emergency-service:
     build: ./backend/emergency-service
-    container_name: emergency-service
-    ports:
-      - "3002:3000"
     environment:
-      DATABASE_URL: postgres://emergency_user:emergency_password@emergency-db:5432/emergency_db
       PORT: 3000
+      DATABASE_URL: postgres://emergency_user:emergency_password@emergency-db:5432/emergency_db
+      JWT_SECRET: ${JWT_SECRET:-dev-only-secret-change-me}
+      DB_SYNC: 'true'
     depends_on:
       emergency-db:
         condition: service_healthy
-    restart: unless-stopped
+    ports:
+      - '3002:3000'
+    healthcheck:
+      test: ['CMD-SHELL', 'wget -qO- http://127.0.0.1:3000/health || exit 1']
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
 
-  # --- Transport Service ---
   transport-service:
     build: ./backend/transport-service
-    container_name: transport-service
-    ports:
-      - "3003:3000"
     environment:
-      REDIS_HOST: redis
       PORT: 3000
+      DATABASE_URL: postgres://transport_user:transport_password@transport-db:5432/transport_db
+      REDIS_URL: redis://redis:6379
+      JWT_SECRET: ${JWT_SECRET:-dev-only-secret-change-me}
+      DB_SYNC: 'true'
     depends_on:
-      - redis
-    restart: unless-stopped
-
-  # --- Frontend (Web UI) ---
-  frontend:
-    build: ./frontend
-    container_name: naseej-frontend
+      transport-db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
     ports:
-      - "5173:80"
+      - '3003:3000'
+    healthcheck:
+      test: ['CMD-SHELL', 'wget -qO- http://127.0.0.1:3000/health || exit 1']
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  api-gateway:
+    build: ./backend/api-gateway
+    environment:
+      PORT: 8080
+      JWT_SECRET: ${JWT_SECRET:-dev-only-secret-change-me}
+      AUTH_URL: http://auth-service:3000
+      EMERGENCY_URL: http://emergency-service:3000
+      TRANSPORT_URL: http://transport-service:3000
     depends_on:
       - auth-service
       - emergency-service
       - transport-service
-    restart: unless-stopped
+    ports:
+      - '8080:8080'
+
+  # ------------------------------------------------------------- monitoring
+  # Start with:  docker compose --profile monitoring up
+  prometheus:
+    image: prom/prometheus:v2.53.0
+    profiles: ['monitoring']
+    volumes:
+      - ./infrastructure/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    ports:
+      - '9090:9090'
+
+  grafana:
+    image: grafana/grafana:11.0.0
+    profiles: ['monitoring']
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_AUTH_ANONYMOUS_ENABLED: 'false'
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./infrastructure/grafana/provisioning:/etc/grafana/provisioning:ro
+    depends_on:
+      - prometheus
+    ports:
+      - '3000:3000'
+
+volumes:
+  auth-db-data:
+  emergency-db-data:
+  transport-db-data:
+  grafana-data:

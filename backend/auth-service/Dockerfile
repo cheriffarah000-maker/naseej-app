@@ -1,26 +1,25 @@
-# Stage 1: Build
-FROM node:18-alpine AS build
-
+# ---------- Stage 1: build ----------
+FROM node:20-alpine AS build
 WORKDIR /app
 
+# Install deps first so Docker can cache this layer between code changes.
 COPY package*.json ./
 RUN npm install
 
 COPY . .
 RUN npm run build
 
-# Stage 2: Production
-FROM node:18-alpine
-
+# ---------- Stage 2: runtime ----------
+FROM node:20-alpine
 WORKDIR /app
+ENV NODE_ENV=production
 
-COPY --from=build /app/package*.json ./
-RUN npm install --omit=dev
+COPY package*.json ./
+RUN npm install --omit=dev && npm cache clean --force
 
 COPY --from=build /app/dist ./dist
 
-EXPOSE 3000
-
+# Never run as root inside the container.
 USER node
-
-CMD ["node", "dist/main"]
+EXPOSE 3000
+CMD ["node", "dist/main.js"]

@@ -2,14 +2,379 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ==========================================================================
+   Naseej — design tokens
+   Mobile-first. Light mode is Sidi Bou Said white/blue, dark mode is a deep
+   ceramic night. Every component reads these variables, so theme = one swap.
+   ========================================================================== */
+:root {
+  --bg: #f4f7fb;
+  --surface: #ffffff;
+  --surface-2: #eef3f9;
+  --text: #0a2540;
+  --text-muted: #5d7488;
+  --primary: #0063d6;
+  --primary-600: #004fa8;
+  --deep: #082a44;
+  --danger: #e1001a;
+  --sand: #fdf6e7;
+  --gold: #c2952b;
+  --border: #e2eaf2;
+  --glass: rgba(255, 255, 255, 0.82);
+  --glass-border: rgba(255, 255, 255, 0.7);
+  --stage: #dde7f0;
+  color-scheme: light;
+}
+
+.dark {
+  --bg: #08131f;
+  --surface: #0f1f2e;
+  --surface-2: #16293a;
+  --text: #eaf2f9;
+  --text-muted: #93a8ba;
+  --primary: #3f9dff;
+  --primary-600: #1f7fe0;
+  --deep: #061a2b;
+  --danger: #ff4a5a;
+  --sand: #182634;
+  --gold: #e0c072;
+  --border: #1e3446;
+  --glass: rgba(15, 31, 46, 0.84);
+  --glass-border: rgba(255, 255, 255, 0.08);
+  --stage: #050d16;
+  color-scheme: dark;
+}
+
 * {
-  margin: 0;
-  padding: 0;
-  box-sizing: border-box;
+  border-color: var(--border);
+}
+
+html,
+body,
+#root {
+  height: 100%;
 }
 
 body {
-  font-family: 'Tajawal', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
-  background-color: #f8fafc;
-  color: #0f172a;
+  margin: 0;
+  background: var(--stage);
+  color: var(--text);
+  font-family: 'Inter', 'Cairo', system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  /* The app is a full-height frame: no rubber-banding behind it. */
+  overscroll-behavior: none;
+}
+
+[dir='rtl'] body,
+[dir='rtl'] .font-sans {
+  font-family: 'Cairo', 'Inter', system-ui, sans-serif;
+}
+
+:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+  border-radius: 8px;
+}
+
+/* ==========================================================================
+   App frame
+   On a phone it is the whole screen. On desktop it becomes a centred device
+   shell, so the design is reviewed at its real size — not stretched to 1920px.
+   ========================================================================== */
+.app-stage {
+  display: grid;
+  place-items: center;
+  min-height: 100dvh;
+  background:
+    radial-gradient(1100px 620px at 50% -10%, rgba(0, 99, 214, 0.16), transparent 60%),
+    var(--stage);
+}
+
+.app-frame {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  max-width: 430px;
+  height: 100dvh;
+  overflow: hidden;
+  background: var(--bg);
+}
+
+@media (min-width: 480px) {
+  .app-frame {
+    height: min(900px, 92dvh);
+    border-radius: 34px;
+    border: 1px solid rgba(10, 37, 64, 0.14);
+    box-shadow:
+      0 40px 90px -30px rgba(6, 30, 52, 0.45),
+      0 2px 0 0 rgba(255, 255, 255, 0.6) inset;
+  }
+}
+
+.app-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* ==========================================================================
+   Bottom tab bar
+   ========================================================================== */
+.tabbar {
+  position: relative;
+  z-index: 30;
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 2px;
+  border-top: 1px solid var(--border);
+  background: var(--glass);
+  backdrop-filter: blur(18px) saturate(160%);
+  -webkit-backdrop-filter: blur(18px) saturate(160%);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+.tab {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  padding: 9px 4px 8px;
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--text-muted);
+  transition: color 0.15s ease;
+}
+
+.tab[data-active='true'] {
+  color: var(--primary);
+}
+
+.tab[data-active='true'] .tab__icon {
+  background: color-mix(in srgb, var(--primary) 14%, transparent);
+}
+
+.tab__icon {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 26px;
+  border-radius: 999px;
+  transition: background 0.2s ease;
+}
+
+/* ==========================================================================
+   Bottom sheet (the mobile replacement for side panels)
+   ========================================================================== */
+.sheet {
+  position: absolute;
+  inset-inline: 0;
+  bottom: 0;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border-radius: 24px 24px 0 0;
+  border-top: 1px solid var(--glass-border);
+  background: var(--surface);
+  box-shadow: 0 -18px 40px -18px rgba(4, 22, 38, 0.45);
+  transition: height 0.28s cubic-bezier(0.4, 0, 0.2, 1);
+  touch-action: none;
+}
+
+.sheet__handle {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: 26px;
+  flex-shrink: 0;
+  cursor: grab;
+}
+
+.sheet__handle span {
+  width: 40px;
+  height: 4px;
+  border-radius: 999px;
+  background: var(--border);
+}
+
+.sheet__body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding-bottom: calc(14px + env(safe-area-inset-bottom, 0px));
+}
+
+/* ==========================================================================
+   Map
+   ========================================================================== */
+.leaflet-container {
+  width: 100%;
+  height: 100%;
+  background: var(--surface-2);
+  font-family: inherit;
+  z-index: 0;
+}
+
+.leaflet-control-attribution {
+  font-size: 9px;
+  padding: 1px 5px !important;
+  background: var(--glass) !important;
+  color: var(--text-muted) !important;
+  backdrop-filter: blur(6px);
+}
+
+.leaflet-control-attribution a {
+  color: var(--primary) !important;
+}
+
+.leaflet-bar a {
+  background: var(--surface) !important;
+  color: var(--text) !important;
+  border-color: var(--border) !important;
+}
+
+/* Markers are divIcons, so they are styled here rather than with PNG sprites. */
+.map-pin {
+  display: grid;
+  place-items: center;
+  border-radius: 50% 50% 50% 5px;
+  transform: rotate(45deg);
+  box-shadow: 0 6px 14px rgba(4, 22, 38, 0.4);
+  border: 2.5px solid #fff;
+}
+
+.map-pin > span {
+  transform: rotate(-45deg);
+  font-size: 13px;
+  line-height: 1;
+}
+
+.map-pin--me {
+  background: var(--primary);
+}
+
+.map-pin--ambulance {
+  background: var(--danger);
+}
+
+.map-pin--volunteer {
+  background: var(--gold);
+}
+
+.map-pin--bus {
+  background: #ffb703;
+  border-radius: 12px;
+  transform: none;
+}
+
+.map-pin--bus > span {
+  transform: none;
+}
+
+.map-pin--selected {
+  outline: 3px solid var(--primary);
+  outline-offset: 2px;
+}
+
+.map-pin--me::after {
+  content: '';
+  position: absolute;
+  inset: -7px;
+  border-radius: 50%;
+  border: 2px solid var(--primary);
+  opacity: 0.3;
+  animation: me-pulse 2.6s ease-out infinite;
+}
+
+@keyframes me-pulse {
+  0% {
+    transform: scale(0.8);
+    opacity: 0.5;
+  }
+  100% {
+    transform: scale(2);
+    opacity: 0;
+  }
+}
+
+/* ==========================================================================
+   Arabic typography guard
+   Arabic is a *joined* script: letter-spacing pulls the connected glyphs apart
+   and visibly breaks words ("الح افلات"). Tailwind's tracking-* and uppercase
+   utilities are Latin habits, so they are neutralised for RTL.
+   ========================================================================== */
+[dir='rtl'] [class*='tracking-'] {
+  letter-spacing: 0 !important;
+}
+
+[dir='rtl'] .uppercase {
+  text-transform: none;
+}
+
+/* ==========================================================================
+   Decoration
+   ========================================================================== */
+.zellige {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='52' height='52' viewBox='0 0 52 52'%3E%3Cg fill='none' stroke='%23ffffff' stroke-opacity='0.16' stroke-width='1'%3E%3Cpath d='M26 0l26 26-26 26L0 26z'/%3E%3Cpath d='M26 9l17 17-17 17-17-17z'/%3E%3C/g%3E%3C/svg%3E");
+  background-size: 52px 52px;
+}
+
+.glass {
+  background: var(--glass);
+  border: 1px solid var(--glass-border);
+  backdrop-filter: blur(18px) saturate(160%);
+  -webkit-backdrop-filter: blur(18px) saturate(160%);
+}
+
+.scroll-thin {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+}
+
+.scroll-thin::-webkit-scrollbar {
+  width: 6px;
+}
+
+.scroll-thin::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 999px;
+}
+
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+.skeleton {
+  position: relative;
+  overflow: hidden;
+  background: var(--surface-2);
+}
+
+.skeleton::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.4), transparent);
+  animation: shimmer 1.4s infinite;
+}
+
+@keyframes shimmer {
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }

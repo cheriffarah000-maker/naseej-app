@@ -1,0 +1,18 @@
+{
+  "name": "api-gateway",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Single entry point: routing, JWT check, rate limiting, metrics",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "express": "^4.19.2",
+    "express-rate-limit": "^7.4.0",
+    "http-proxy-middleware": "^2.0.6",
+    "jsonwebtoken": "^9.0.2",
+    "prom-client": "^15.1.3"
+  }
+}

@@ -1,0 +1,21 @@
+{
+  "name": "Naseej — نسيج",
+  "short_name": "Naseej",
+  "description": "Private ambulances, first-aid volunteers and university buses in Tunisia.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#082a44",
+  "theme_color": "#082a44",
+  "lang": "ar",
+  "dir": "rtl",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

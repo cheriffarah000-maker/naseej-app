@@ -1,0 +1,26 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  # Prometheus scraping itself if you want a sanity check.
+  - job_name: prometheus
+    static_configs:
+      - targets: ['localhost:9090']
+
+  # Every service exposes /metrics thanks to prom-client.
+  - job_name: naseej-services
+    metrics_path: /metrics
+    static_configs:
+      - targets: ['auth-service:3000']
+        labels:
+          service: auth-service
+      - targets: ['emergency-service:3000']
+        labels:
+          service: emergency-service
+      - targets: ['transport-service:3000']
+        labels:
+          service: transport-service
+      - targets: ['api-gateway:8080']
+        labels:
+          service: api-gateway
