@@ -21,6 +21,7 @@ services:
       interval: 5s
       timeout: 5s
       retries: 10
+      start_period: 60s
     ports:
       - '5432:5432'
 
@@ -39,6 +40,7 @@ services:
       interval: 5s
       timeout: 5s
       retries: 10
+      start_period: 60s
     ports:
       - '5433:5432'
 
@@ -55,6 +57,7 @@ services:
       interval: 5s
       timeout: 5s
       retries: 10
+      start_period: 60s
     ports:
       - '5434:5432'
 
@@ -146,7 +149,14 @@ services:
       - transport-service
     ports:
       - '8080:8080'
-
+  web-frontend:
+    build: ./frontend
+    environment:
+      - VITE_API_URL=http://192.168.216.140:8080
+    ports:
+      - '5173:8080'
+    depends_on:
+      - api-gateway
   # ------------------------------------------------------------- monitoring
   # Start with:  docker compose --profile monitoring up
   prometheus:
