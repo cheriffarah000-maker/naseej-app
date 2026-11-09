@@ -1,0 +1,193 @@
+# Naseej : manifestes Kubernetes (Minikube)
+# Dérivés du docker-compose.yml du dépôt sahar2102/naseej-app.
+# Périmètre : auth-service + emergency-service + api-gateway + leurs 2 bases.
+# Le secret n'est PAS dans ce fichier : il se crée avec kubectl (voir les étapes).
+#
+# Pré-requis : images construites puis chargées dans Minikube
+#   naseej-auth:1.0   naseej-emergency:1.0   naseej-gateway:1.0
+apiVersion: v1
+kind: Namespace
+metadata: { name: naseej }
+---
+# ------------------------------------------------------------ auth-db
+apiVersion: apps/v1
+kind: StatefulSet
+metadata: { name: auth-db, namespace: naseej }
+spec:
+  serviceName: auth-db
+  replicas: 1
+  selector: { matchLabels: { app: auth-db } }
+  template:
+    metadata: { labels: { app: auth-db } }
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:16-alpine
+          ports: [{ containerPort: 5432 }]
+          env:
+            - { name: POSTGRES_USER, value: naseej_user }
+            - { name: POSTGRES_DB, value: auth_db }
+            - { name: PGDATA, value: /var/lib/postgresql/data/pgdata }
+            - name: POSTGRES_PASSWORD
+              valueFrom: { secretKeyRef: { name: naseej-secret, key: AUTH_DB_PASSWORD } }
+          readinessProbe:
+            exec: { command: ["pg_isready", "-U", "naseej_user", "-d", "auth_db"] }
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          volumeMounts: [{ name: data, mountPath: /var/lib/postgresql/data }]
+  volumeClaimTemplates:
+    - metadata: { name: data }
+      spec:
+        accessModes: [ReadWriteOnce]
+        resources: { requests: { storage: 1Gi } }
+---
+apiVersion: v1
+kind: Service
+metadata: { name: auth-db, namespace: naseej }
+spec:
+  selector: { app: auth-db }
+  ports: [{ port: 5432 }]
+---
+# ------------------------------------------------------- emergency-db
+# L'image postgis/postgis active l'extension PostGIS dans la base POSTGRES_DB.
+apiVersion: apps/v1
+kind: StatefulSet
+metadata: { name: emergency-db, namespace: naseej }
+spec:
+  serviceName: emergency-db
+  replicas: 1
+  selector: { matchLabels: { app: emergency-db } }
+  template:
+    metadata: { labels: { app: emergency-db } }
+    spec:
+      containers:
+        - name: postgis
+          image: postgis/postgis:16-3.4-alpine
+          ports: [{ containerPort: 5432 }]
+          env:
+            - { name: POSTGRES_USER, value: emergency_user }
+            - { name: POSTGRES_DB, value: emergency_db }
+            - { name: PGDATA, value: /var/lib/postgresql/data/pgdata }
+            - name: POSTGRES_PASSWORD
+              valueFrom: { secretKeyRef: { name: naseej-secret, key: EMERGENCY_DB_PASSWORD } }
+          readinessProbe:
+            exec: { command: ["pg_isready", "-U", "emergency_user", "-d", "emergency_db"] }
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          volumeMounts: [{ name: data, mountPath: /var/lib/postgresql/data }]
+  volumeClaimTemplates:
+    - metadata: { name: data }
+      spec:
+        accessModes: [ReadWriteOnce]
+        resources: { requests: { storage: 1Gi } }
+---
+apiVersion: v1
+kind: Service
+metadata: { name: emergency-db, namespace: naseej }
+spec:
+  selector: { app: emergency-db }
+  ports: [{ port: 5432 }]
+---
+# ------------------------------------------------------- auth-service
+apiVersion: apps/v1
+kind: Deployment
+metadata: { name: auth-service, namespace: naseej }
+spec:
+  replicas: 1
+  selector: { matchLabels: { app: auth-service } }
+  template:
+    metadata: { labels: { app: auth-service } }
+    spec:
+      containers:
+        - name: auth-service
+          image: naseej-auth:1.0
+          imagePullPolicy: Never
+          ports: [{ containerPort: 3000 }]
+          env:
+            - name: AUTH_DB_PASSWORD
+              valueFrom: { secretKeyRef: { name: naseej-secret, key: AUTH_DB_PASSWORD } }
+            - name: JWT_SECRET
+              valueFrom: { secretKeyRef: { name: naseej-secret, key: JWT_SECRET } }
+            - { name: PORT, value: "3000" }
+            - { name: DATABASE_URL, value: "postgres://naseej_user:$(AUTH_DB_PASSWORD)@auth-db:5432/auth_db" }
+            - { name: JWT_ACCESS_TTL, value: 1h }
+            - { name: JWT_REFRESH_TTL, value: 7d }
+            - { name: DB_SYNC, value: "true" }
+          readinessProbe:
+            httpGet: { path: /health, port: 3000 }
+            initialDelaySeconds: 15
+            periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata: { name: auth-service, namespace: naseej }
+spec:
+  selector: { app: auth-service }
+  ports: [{ port: 3000 }]
+---
+# -------------------------------------------------- emergency-service
+apiVersion: apps/v1
+kind: Deployment
+metadata: { name: emergency-service, namespace: naseej }
+spec:
+  replicas: 1
+  selector: { matchLabels: { app: emergency-service } }
+  template:
+    metadata: { labels: { app: emergency-service } }
+    spec:
+      containers:
+        - name: emergency-service
+          image: naseej-emergency:1.0
+          imagePullPolicy: Never
+          ports: [{ containerPort: 3000 }]
+          env:
+            - name: EMERGENCY_DB_PASSWORD
+              valueFrom: { secretKeyRef: { name: naseej-secret, key: EMERGENCY_DB_PASSWORD } }
+            - name: JWT_SECRET
+              valueFrom: { secretKeyRef: { name: naseej-secret, key: JWT_SECRET } }
+            - { name: PORT, value: "3000" }
+            - { name: DATABASE_URL, value: "postgres://emergency_user:$(EMERGENCY_DB_PASSWORD)@emergency-db:5432/emergency_db" }
+            - { name: DB_SYNC, value: "true" }
+          readinessProbe:
+            httpGet: { path: /health, port: 3000 }
+            initialDelaySeconds: 15
+            periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata: { name: emergency-service, namespace: naseej }
+spec:
+  selector: { app: emergency-service }
+  ports: [{ port: 3000 }]
+---
+# -------------------------------------------------------- api-gateway
+# Le transport-service n'est pas déployé : son adresse reste déclarée mais
+# les routes /transport ne répondront pas (à documenter dans le rapport).
+apiVersion: apps/v1
+kind: Deployment
+metadata: { name: api-gateway, namespace: naseej }
+spec:
+  replicas: 1
+  selector: { matchLabels: { app: api-gateway } }
+  template:
+    metadata: { labels: { app: api-gateway } }
+    spec:
+      containers:
+        - name: api-gateway
+          image: naseej-gateway:1.0
+          imagePullPolicy: Never
+          ports: [{ containerPort: 8080 }]
+          env:
+            - name: JWT_SECRET
+              valueFrom: { secretKeyRef: { name: naseej-secret, key: JWT_SECRET } }
+            - { name: PORT, value: "8080" }
+            - { name: AUTH_URL, value: "http://auth-service:3000" }
+            - { name: EMERGENCY_URL, value: "http://emergency-service:3000" }
+            - { name: TRANSPORT_URL, value: "http://transport-service:3000" }
+---
+apiVersion: v1
+kind: Service
+metadata: { name: api-gateway, namespace: naseej }
+spec:
+  selector: { app: api-gateway }
+  ports: [{ port: 8080 }]
