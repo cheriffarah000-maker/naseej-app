@@ -324,3 +324,6 @@ infrastructure/
   grafana/               datasource provisioning
 docker-compose.yml
 ```
+
+
+## Test de déploiement automatique
